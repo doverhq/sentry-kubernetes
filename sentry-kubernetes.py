@@ -40,12 +40,10 @@ def _listify_env(name, default=None):
 
 MANGLE_NAMES = _listify_env("MANGLE_NAMES")
 EVENT_LEVELS = _listify_env("EVENT_LEVELS", ["warning", "error"])
-REASONS_EXCLUDED = _listify_env("REASON_FILTER")
+REASONS_EXCLUDED = ["NodeSysctlChange", "NetworkNotReady"]
 COMPONENTS_EXCLUDED = _listify_env("COMPONENT_FILTER")
-DEPRECATED_EVENT_NAMESPACE = (
-    [os.getenv("EVENT_NAMESPACE")] if os.getenv("EVENT_NAMESPACE") else None
-)
-EVENT_NAMESPACES = _listify_env("EVENT_NAMESPACES", DEPRECATED_EVENT_NAMESPACE)
+DEPRECATED_EVENT_NAMESPACE = [os.getenv("EVENT_NAMESPACE")] if os.getenv("EVENT_NAMESPACE") else None
+EVENT_NAMESPACES = ["default"]
 EVENT_NAMESPACES_EXCLUDED = _listify_env("EVENT_NAMESPACES_EXCLUDED")
 
 
@@ -60,21 +58,18 @@ def main():
 
     try:
         config.load_incluster_config()
-    except:
+    except Exception:
         config.load_kube_config()
 
     while True:
         try:
             watch_loop()
         except ApiException as e:
-            logging.error(
-                "Exception when calling CoreV1Api->list_event_for_all_namespaces: %s\n"
-                % e
-            )
+            logging.error("Exception when calling CoreV1Api->list_event_for_all_namespaces: %s\n" % e)
             time.sleep(5)
         except ProtocolError:
             logging.warning("ProtocolError exception. Continuing...")
-        except Exception as e:
+        except Exception:
             logging.exception("Unhandled exception occurred.")
 
 
@@ -95,11 +90,6 @@ def watch_loop():
         release=RELEASE,
         transport=ThreadedRequestsHTTPTransport,
     )
-
-    # try:
-    #     resource_version = v1.list_event_for_all_namespaces().items[-1].metadata.resource_version
-    # except:
-    #     resource_version = 0
 
     if EVENT_NAMESPACES and len(EVENT_NAMESPACES) == 1:
         stream = w.stream(v1.list_namespaced_event, EVENT_NAMESPACES[0])
@@ -169,11 +159,7 @@ def watch_loop():
 
         if level in EVENT_LEVELS or event_type in ("error",):
             if event.involved_object:
-                meta["involved_object"] = {
-                    k: v
-                    for k, v in event.involved_object.to_dict().items()
-                    if v is not None
-                }
+                meta["involved_object"] = {k: v for k, v in event.involved_object.to_dict().items() if v is not None}
 
             fingerprint = []
             tags = {}
@@ -226,10 +212,7 @@ def watch_loop():
             data["namespace"] = namespace
 
         breadcrumbs.record(
-            data=data,
-            level=level,
-            message=message,
-            timestamp=time.mktime(creation_timestamp.timetuple()),
+            data=data, level=level, message=message, timestamp=time.mktime(creation_timestamp.timetuple()),
         )
 
 
